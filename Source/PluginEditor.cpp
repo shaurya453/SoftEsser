@@ -1,5 +1,6 @@
 // SoftEsser - Built by Shaurya 13-05-2026
-// This file handles the graphical user interface (GUI) layout, knob styling, labels, and parameter attachments for the plugin window.
+// This file handles the graphical user interface (GUI) layout, knob styling, tooltips, and
+// parameter attachments for the plugin window.
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -9,20 +10,17 @@
 
 namespace
 {
-    // Window size
-    constexpr int windowWidth = 500;
-    constexpr int windowHeight = 250;
+    // Design size of the background art (also the minimum window size). The resize constraint
+    // below locks the window to this same aspect ratio, so the background always scales
+    // uniformly instead of stretching out of shape.
+    constexpr int baseWidth = 500;
+    constexpr int baseHeight = 250;
 
-    // Shared layout for the five rotary knobs and their labels, kept in one place so
-    // paint() (labels) and resized() (knobs) can't drift out of sync with each other.
-    constexpr int knobY = 70;
-    constexpr int knobSize = 80;
-    constexpr int labelY = 180;
-    constexpr int labelHeight = 20;
-    constexpr int labelWidth = 80;
+    // Largest the window can be dragged to (same aspect ratio as baseWidth/baseHeight)
+    constexpr int maxWidth = 1400;
+    constexpr int maxHeight = 700;
 
-    constexpr int titleY = 20;
-    constexpr int titleHeight = 40;
+    constexpr int numControls = 5;
 }
 
 // ====================================================================================================== //
@@ -31,47 +29,43 @@ namespace
 SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p)
 {
+    setLookAndFeel (&lookAndFeel);
+
     // Load background image from binary data
     backgroundImage = juce::ImageCache::getFromMemory (BinaryData::bg_png, BinaryData::bg_pngSize);
 
-    // Initializing sliders
-    setupSlider (thresholdSlider);
-    thresholdSlider.setRange (-60.0f, 0.0f);
-    thresholdSlider.setValue (-20.0f);
-    thresholdSlider.setNumDecimalPlacesToDisplay (2);
-    thresholdSlider.setDoubleClickReturnValue (true, -20.0);
-    thresholdSlider.setTextValueSuffix (" dB");
+    titleLabel.setText ("SoftEsser", juce::dontSendNotification);
+    titleLabel.setJustificationType (juce::Justification::centred);
+    titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    titleLabel.setFont (juce::Font (26.0f, juce::Font::bold));
+    addAndMakeVisible (titleLabel);
 
-    setupSlider (amountSlider);
-    amountSlider.setRange (0.0f, 100.0f);
-    amountSlider.setValue (50.0f);
-    amountSlider.setNumDecimalPlacesToDisplay (2);
-    amountSlider.setDoubleClickReturnValue (true, 50.0);
-    amountSlider.setTextValueSuffix (" %");
+    setupControl (thresholdControl, "Threshold",
+                  "Level, in dB, above which gain reduction begins.",
+                  -60.0f, 0.0f, -20.0f, 1, " dB");
 
-    setupSlider (frequencySlider);
-    frequencySlider.setRange (4000.0f, 10000.0f);
-    frequencySlider.setValue (7000.0f);
-    frequencySlider.setNumDecimalPlacesToDisplay (2);
-    frequencySlider.setDoubleClickReturnValue (true, 7000.0);
-    frequencySlider.setTextValueSuffix (" Hz");
+    setupControl (amountControl, "Amount",
+                  "How strongly the level above the threshold is pulled down.",
+                  0.0f, 100.0f, 50.0f, 0, " %");
 
-    setupSlider (mixSlider);
-    mixSlider.setRange (0.0f, 100.0f);
-    mixSlider.setValue (100.0f);
-    mixSlider.setNumDecimalPlacesToDisplay (2);
-    mixSlider.setDoubleClickReturnValue (true, 100.0);
-    mixSlider.setTextValueSuffix (" %");
+    setupControl (frequencyControl, "Frequency",
+                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).",
+                  4000.0f, 10000.0f, 7000.0f, 0, " Hz");
 
-    setupSlider (outputSlider);
-    outputSlider.setRange (-12.0f, 12.0f);
-    outputSlider.setValue (0.0f);
-    outputSlider.setNumDecimalPlacesToDisplay (2);
-    outputSlider.setDoubleClickReturnValue (true, 0.0);
-    outputSlider.setTextValueSuffix (" dB");
+    setupControl (mixControl, "Mix",
+                  "Blend between the processed (wet) and original (dry) signal.",
+                  0.0f, 100.0f, 100.0f, 0, " %");
 
-    // Setting size of the window
-    setSize (windowWidth, windowHeight);
+    setupControl (outputControl, "Output",
+                  "Output level trim, in dB, applied after processing.",
+                  -12.0f, 12.0f, 0.0f, 1, " dB");
+
+    // Allow the window to be resized while keeping the background's original proportions
+    setResizable (true, true);
+    setResizeLimits (baseWidth, baseHeight, maxWidth, maxHeight);
+    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+
+    setSize (baseWidth, baseHeight);
 }
 
 // ====================================================================================================== //
@@ -79,57 +73,84 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
 // Destructor for the editor
 SoftEsserAudioProcessorEditor::~SoftEsserAudioProcessorEditor()
 {
+    setLookAndFeel (nullptr);
 }
 
 // ====================================================================================================== //
 
-// Helper function to configure a slider's shared properties (style, text box, visibility, listener)
-void SoftEsserAudioProcessorEditor::setupSlider (juce::Slider& slider)
+// Configures one rotary control (slider + its name label) and registers this as its listener
+void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name,
+                                                   const juce::String& tooltip,
+                                                   float minValue, float maxValue, float defaultValue,
+                                                   int decimalPlaces, const juce::String& suffix)
 {
+    auto& slider = control.slider;
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 20);
-
+    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 20);
+    slider.setRange (minValue, maxValue);
+    slider.setValue (defaultValue);
+    slider.setNumDecimalPlacesToDisplay (decimalPlaces);
+    slider.setDoubleClickReturnValue (true, defaultValue);
+    slider.setTextValueSuffix (suffix);
+    slider.setTooltip (tooltip);
+    slider.addListener (this);
     addAndMakeVisible (slider);
 
-    slider.addListener (this);
+    auto& label = control.nameLabel;
+    label.setText (name, juce::dontSendNotification);
+    label.setJustificationType (juce::Justification::centred);
+    label.setFont (juce::Font (14.0f));
+    label.setTooltip (tooltip);
+    addAndMakeVisible (label);
 }
 
 // ====================================================================================================== //
 
-// Drawing the UI background, title text, and knob labels
+// Drawing the UI background
 void SoftEsserAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    // Draw the background image if it successfully loaded, otherwise fall back to a solid color
+    // The window's aspect ratio is locked to the image's own (see the constructor), so this
+    // stretch never distorts the image - it's always a uniform scale.
     if (backgroundImage.isValid())
         g.drawImage (backgroundImage, getLocalBounds().toFloat());
     else
-        g.fillAll (juce::Colour (15, 20, 35));
-
-    g.setColour (juce::Colours::linen);
-
-    g.setFont (28.0f);
-    g.drawFittedText ("/ SoftEsser V1.1", 0, titleY, getWidth(), titleHeight,
-                       juce::Justification::centred, 1);
-
-    g.setFont (14.0f);
-
-    g.drawText ("Threshold", 35, labelY, labelWidth, labelHeight, juce::Justification::centred);
-    g.drawText ("Amount", 125, labelY, labelWidth, labelHeight, juce::Justification::centred);
-    g.drawText ("Frequency", 215, labelY, labelWidth, labelHeight, juce::Justification::centred);
-    g.drawText ("Mix", 305, labelY, labelWidth, labelHeight, juce::Justification::centred);
-    g.drawText ("Output", 395, labelY, labelWidth, labelHeight, juce::Justification::centred);
+        g.fillAll (juce::Colour (0xff0F1423));
 }
 
 // ====================================================================================================== //
 
-// Slider position and size within the editor window
+// Lays out every control as a proportion of the current window size, so the UI scales smoothly
+// as the plugin is resized rather than staying pinned to fixed pixel positions.
 void SoftEsserAudioProcessorEditor::resized()
 {
-    thresholdSlider.setBounds (30, knobY, knobSize, knobSize);
-    amountSlider.setBounds   (120, knobY, knobSize, knobSize);
-    frequencySlider.setBounds (210, knobY, knobSize, knobSize);
-    mixSlider.setBounds      (300, knobY, knobSize, knobSize);
-    outputSlider.setBounds   (390, knobY, knobSize, knobSize);
+    auto width  = (float) getWidth();
+    auto height = (float) getHeight();
+
+    titleLabel.setBounds (juce::Rectangle<float> (0.0f, height * 0.04f, width, height * 0.18f).toNearestInt());
+
+    ParameterControl* controls[numControls] = {
+        &thresholdControl, &amountControl, &frequencyControl, &mixControl, &outputControl
+    };
+
+    auto labelAreaY      = height * 0.24f;
+    auto labelAreaHeight = height * 0.10f;
+    auto sliderAreaY     = labelAreaY + labelAreaHeight;
+    auto sliderAreaHeight = height * 0.52f;
+
+    auto columnWidth = width / (float) numControls;
+    auto sliderSize  = juce::jmin (columnWidth * 0.85f, sliderAreaHeight);
+
+    for (int i = 0; i < numControls; ++i)
+    {
+        auto columnX = columnWidth * (float) i;
+
+        controls[i]->nameLabel.setBounds (
+            juce::Rectangle<float> (columnX, labelAreaY, columnWidth, labelAreaHeight).toNearestInt());
+
+        auto sliderX = columnX + (columnWidth - sliderSize) * 0.5f;
+        controls[i]->slider.setBounds (
+            juce::Rectangle<float> (sliderX, sliderAreaY, sliderSize, sliderSize).toNearestInt());
+    }
 }
 
 // ====================================================================================================== //
@@ -137,20 +158,20 @@ void SoftEsserAudioProcessorEditor::resized()
 // Called whenever a slider value changes and updates the processor parameter values in real time
 void SoftEsserAudioProcessorEditor::sliderValueChanged (juce::Slider* slider)
 {
-    if (slider == &thresholdSlider)
-        processorRef.threshold = (float) thresholdSlider.getValue();
+    if (slider == &thresholdControl.slider)
+        processorRef.threshold = (float) slider->getValue();
 
-    else if (slider == &amountSlider)
-        processorRef.amount = (float) amountSlider.getValue();
+    else if (slider == &amountControl.slider)
+        processorRef.amount = (float) slider->getValue();
 
-    else if (slider == &frequencySlider)
-        processorRef.frequency = (float) frequencySlider.getValue();
+    else if (slider == &frequencyControl.slider)
+        processorRef.frequency = (float) slider->getValue();
 
-    else if (slider == &mixSlider)
-        processorRef.mix = (float) mixSlider.getValue();
+    else if (slider == &mixControl.slider)
+        processorRef.mix = (float) slider->getValue();
 
-    else if (slider == &outputSlider)
-        processorRef.outputGain = (float) outputSlider.getValue();
+    else if (slider == &outputControl.slider)
+        processorRef.outputGain = (float) slider->getValue();
 }
 
 // ====================================================================================================== //
