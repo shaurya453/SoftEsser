@@ -18,3 +18,15 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftEsser-VST3
+          path: build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftEsser-Standalone
+          path: build/SoftEsser_artefacts/Release/Standalone/SoftEsser.exe
