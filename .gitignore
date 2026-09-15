@@ -1,0 +1,26 @@
+# Build folders
+/build/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+
+# Binaries
+*.exe
+*.dll
+*.lib
+*.exp
+*.ilk
+*.pdb
+
+# Plugin binaries
+*.vst3
+
+# Logs
+*.log
