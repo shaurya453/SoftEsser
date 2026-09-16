@@ -37,7 +37,7 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     titleLabel.setText ("SoftEsser", juce::dontSendNotification);
     titleLabel.setJustificationType (juce::Justification::centred);
     titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
-    titleLabel.setFont (juce::Font (26.0f, juce::Font::bold));
+    titleLabel.setName (SoftEsserLookAndFeel::titleLabelName); // picks its font size from the LookAndFeel
     addAndMakeVisible (titleLabel);
 
     setupControl (thresholdControl, "Threshold",
@@ -99,7 +99,7 @@ void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, con
     auto& label = control.nameLabel;
     label.setText (name, juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
-    label.setFont (juce::Font (14.0f));
+    label.setName (SoftEsserLookAndFeel::paramNameLabelName); // picks its font size from the LookAndFeel
     label.setTooltip (tooltip);
     addAndMakeVisible (label);
 }
@@ -126,6 +126,10 @@ void SoftEsserAudioProcessorEditor::resized()
     auto width  = (float) getWidth();
     auto height = (float) getHeight();
 
+    // Aspect ratio is locked (see the constructor), so height/baseHeight alone is an exact
+    // scale factor for both dimensions - used to keep every font size in proportion too.
+    lookAndFeel.setFontScale (height / (float) baseHeight);
+
     titleLabel.setBounds (juce::Rectangle<float> (0.0f, height * 0.04f, width, height * 0.18f).toNearestInt());
 
     ParameterControl* controls[numControls] = {
@@ -151,6 +155,11 @@ void SoftEsserAudioProcessorEditor::resized()
         controls[i]->slider.setBounds (
             juce::Rectangle<float> (sliderX, sliderAreaY, sliderSize, sliderSize).toNearestInt());
     }
+
+    // Bounds changes above already trigger repaints for components whose size actually moved,
+    // but a font-scale-only change can leave some bounds numerically unchanged - repaint
+    // everything explicitly so text always reflects the current scale.
+    repaint();
 }
 
 // ====================================================================================================== //
