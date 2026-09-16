@@ -1,6 +1,6 @@
 // SoftEsser - Built by Shaurya 13-05-2026
-// This file handles the graphical user interface (GUI) layout, knob styling, tooltips, and
-// parameter attachments for the plugin window.
+// This file handles the graphical user interface (GUI) layout, knob styling, tooltips, presets,
+// and parameter attachments for the plugin window.
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -27,7 +27,7 @@ namespace
 
 // Constructor for the plugin editor.
 SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProcessor& p)
-    : AudioProcessorEditor (&p), processorRef (p)
+    : AudioProcessorEditor (&p), processorRef (p), presetManager (p.apvts)
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -40,25 +40,40 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     titleLabel.setName (SoftEsserLookAndFeel::titleLabelName); // picks its font size from the LookAndFeel
     addAndMakeVisible (titleLabel);
 
-    setupControl (thresholdControl, "Threshold",
-                  "Level, in dB, above which gain reduction begins.",
-                  -60.0f, 0.0f, -20.0f, 1, " dB");
+    setupControl (thresholdControl, SoftEsserAudioProcessor::thresholdParamID, "Threshold",
+                  "Level, in dB, above which gain reduction begins.", 1, " dB");
 
-    setupControl (amountControl, "Amount",
-                  "How strongly the level above the threshold is pulled down.",
-                  0.0f, 100.0f, 50.0f, 0, " %");
+    setupControl (amountControl, SoftEsserAudioProcessor::amountParamID, "Amount",
+                  "How strongly the level above the threshold is pulled down.", 0, " %");
 
-    setupControl (frequencyControl, "Frequency",
-                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).",
-                  4000.0f, 10000.0f, 7000.0f, 0, " Hz");
+    setupControl (frequencyControl, SoftEsserAudioProcessor::frequencyParamID, "Frequency",
+                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", 0, " Hz");
 
-    setupControl (mixControl, "Mix",
-                  "Blend between the processed (wet) and original (dry) signal.",
-                  0.0f, 100.0f, 100.0f, 0, " %");
+    setupControl (mixControl, SoftEsserAudioProcessor::mixParamID, "Mix",
+                  "Blend between the processed (wet) and original (dry) signal.", 0, " %");
 
-    setupControl (outputControl, "Output",
-                  "Output level trim, in dB, applied after processing.",
-                  -12.0f, 12.0f, 0.0f, 1, " dB");
+    setupControl (outputControl, SoftEsserAudioProcessor::outputGainParamID, "Output",
+                  "Output level trim, in dB, applied after processing.", 1, " dB");
+
+    presetBox.setTooltip ("Load a saved preset.");
+    presetBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::black.withAlpha (0.35f));
+    presetBox.setColour (juce::ComboBox::outlineColourId, SoftEsserLookAndFeel::accentColour.withAlpha (0.4f));
+    presetBox.setColour (juce::ComboBox::textColourId, juce::Colours::white);
+    presetBox.onChange = [this]
+    {
+        auto selected = presetBox.getText();
+        if (selected.isNotEmpty() && selected != presetManager.getCurrentPresetName())
+            presetManager.loadPreset (selected);
+    };
+    addAndMakeVisible (presetBox);
+
+    savePresetButton.setTooltip ("Save the current knob settings as a new preset.");
+    savePresetButton.setColour (juce::TextButton::buttonColourId, SoftEsserLookAndFeel::accentColour.withAlpha (0.25f));
+    savePresetButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+    savePresetButton.onClick = [this] { showSavePresetDialog(); };
+    addAndMakeVisible (savePresetButton);
+
+    refreshPresetBox();
 
     // Allow the window to be resized while keeping the background's original proportions
     setResizable (true, true);
@@ -78,30 +93,74 @@ SoftEsserAudioProcessorEditor::~SoftEsserAudioProcessorEditor()
 
 // ====================================================================================================== //
 
-// Configures one rotary control (slider + its name label) and registers this as its listener
-void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& name,
-                                                   const juce::String& tooltip,
-                                                   float minValue, float maxValue, float defaultValue,
+// Configures one rotary control (slider + its name label) and attaches it to its apvts parameter
+void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& parameterID,
+                                                   const juce::String& displayName, const juce::String& tooltip,
                                                    int decimalPlaces, const juce::String& suffix)
 {
     auto& slider = control.slider;
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 20);
-    slider.setRange (minValue, maxValue);
-    slider.setValue (defaultValue);
     slider.setNumDecimalPlacesToDisplay (decimalPlaces);
-    slider.setDoubleClickReturnValue (true, defaultValue);
     slider.setTextValueSuffix (suffix);
     slider.setTooltip (tooltip);
-    slider.addListener (this);
     addAndMakeVisible (slider);
 
+    // Binds the slider's range/value to the apvts parameter (including its default value for
+    // double-click-to-reset) and keeps both in sync from then on, in both directions.
+    control.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processorRef.apvts, parameterID, slider);
+
     auto& label = control.nameLabel;
-    label.setText (name, juce::dontSendNotification);
+    label.setText (displayName, juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
     label.setName (SoftEsserLookAndFeel::paramNameLabelName); // picks its font size from the LookAndFeel
     label.setTooltip (tooltip);
     addAndMakeVisible (label);
+}
+
+// ====================================================================================================== //
+
+// Repopulates presetBox from PresetManager's current preset list, selecting the active preset
+void SoftEsserAudioProcessorEditor::refreshPresetBox()
+{
+    auto presets = presetManager.getAllPresets();
+
+    presetBox.clear (juce::dontSendNotification);
+    presetBox.addItemList (presets, 1);
+
+    auto currentIndex = presets.indexOf (presetManager.getCurrentPresetName());
+    presetBox.setSelectedItemIndex (currentIndex, juce::dontSendNotification);
+}
+
+// ====================================================================================================== //
+
+// Opens a text-entry dialog asking for a preset name, then saves under that name
+void SoftEsserAudioProcessorEditor::showSavePresetDialog()
+{
+    presetNameWindow = std::make_unique<juce::AlertWindow> (
+        "Save Preset", "Enter a name for this preset:", juce::MessageBoxIconType::NoIcon);
+
+    presetNameWindow->addTextEditor ("name", presetManager.getCurrentPresetName());
+    presetNameWindow->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    presetNameWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    presetNameWindow->enterModalState (true, juce::ModalCallbackFunction::create (
+        [this] (int result)
+        {
+            if (result == 1 && presetNameWindow != nullptr)
+            {
+                auto name = presetNameWindow->getTextEditorContents ("name").trim();
+
+                if (name.isNotEmpty())
+                {
+                    presetManager.savePreset (name);
+                    refreshPresetBox();
+                }
+            }
+
+            presetNameWindow.reset();
+        }), false);
 }
 
 // ====================================================================================================== //
@@ -139,7 +198,7 @@ void SoftEsserAudioProcessorEditor::resized()
     auto labelAreaY      = height * 0.24f;
     auto labelAreaHeight = height * 0.10f;
     auto sliderAreaY     = labelAreaY + labelAreaHeight;
-    auto sliderAreaHeight = height * 0.52f;
+    auto sliderAreaHeight = height * 0.44f;
 
     auto columnWidth = width / (float) numControls;
     auto sliderSize  = juce::jmin (columnWidth * 0.85f, sliderAreaHeight);
@@ -156,31 +215,24 @@ void SoftEsserAudioProcessorEditor::resized()
             juce::Rectangle<float> (sliderX, sliderAreaY, sliderSize, sliderSize).toNearestInt());
     }
 
+    // Preset row along the bottom
+    auto presetRowY      = height * 0.88f;
+    auto presetRowHeight = height * 0.09f;
+    auto presetRowWidth  = width * 0.7f;
+    auto presetRowX      = (width - presetRowWidth) * 0.5f;
+    auto presetGap       = presetRowWidth * 0.02f;
+    auto saveButtonWidth = presetRowWidth * 0.28f;
+    auto presetBoxWidth  = presetRowWidth - saveButtonWidth - presetGap;
+
+    presetBox.setBounds (
+        juce::Rectangle<float> (presetRowX, presetRowY, presetBoxWidth, presetRowHeight).toNearestInt());
+    savePresetButton.setBounds (
+        juce::Rectangle<float> (presetRowX + presetBoxWidth + presetGap, presetRowY, saveButtonWidth, presetRowHeight).toNearestInt());
+
     // Bounds changes above already trigger repaints for components whose size actually moved,
     // but a font-scale-only change can leave some bounds numerically unchanged - repaint
     // everything explicitly so text always reflects the current scale.
     repaint();
-}
-
-// ====================================================================================================== //
-
-// Called whenever a slider value changes and updates the processor parameter values in real time
-void SoftEsserAudioProcessorEditor::sliderValueChanged (juce::Slider* slider)
-{
-    if (slider == &thresholdControl.slider)
-        processorRef.threshold = (float) slider->getValue();
-
-    else if (slider == &amountControl.slider)
-        processorRef.amount = (float) slider->getValue();
-
-    else if (slider == &frequencyControl.slider)
-        processorRef.frequency = (float) slider->getValue();
-
-    else if (slider == &mixControl.slider)
-        processorRef.mix = (float) slider->getValue();
-
-    else if (slider == &outputControl.slider)
-        processorRef.outputGain = (float) slider->getValue();
 }
 
 // ====================================================================================================== //

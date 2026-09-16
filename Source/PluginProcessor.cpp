@@ -15,12 +15,19 @@ static constexpr float envelopeNoiseFloor = 0.0001f;
 
 // ====================================================================================================== //
 
-// Constructor for audio processor, defines stereo input and output buses
+// Constructor for audio processor, defines stereo input and output buses, the parameter tree,
+// and caches raw pointers into it for fast reads on the audio thread.
 SoftEsserAudioProcessor::SoftEsserAudioProcessor()
      : AudioProcessor (BusesProperties()
                      .withInput  ("Input", juce::AudioChannelSet::stereo(), true)
-                     .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+                     .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    thresholdParam  = apvts.getRawParameterValue (thresholdParamID);
+    amountParam     = apvts.getRawParameterValue (amountParamID);
+    frequencyParam  = apvts.getRawParameterValue (frequencyParamID);
+    mixParam        = apvts.getRawParameterValue (mixParamID);
+    outputGainParam = apvts.getRawParameterValue (outputGainParamID);
 }
 
 // ====================================================================================================== //
@@ -28,6 +35,43 @@ SoftEsserAudioProcessor::SoftEsserAudioProcessor()
 // Destructor
 SoftEsserAudioProcessor::~SoftEsserAudioProcessor()
 {
+}
+
+// ====================================================================================================== //
+
+// Declares the five user parameters: ID, display name, range, and default value. This is the
+// single source of truth for parameter ranges/defaults - the editor's sliders read them back
+// via their attachments rather than duplicating these numbers.
+juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { thresholdParamID, 1 }, "Threshold",
+        juce::NormalisableRange<float> (-60.0f, 0.0f), -20.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { amountParamID, 1 }, "Amount",
+        juce::NormalisableRange<float> (0.0f, 100.0f), 50.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { frequencyParamID, 1 }, "Frequency",
+        juce::NormalisableRange<float> (4000.0f, 10000.0f), 7000.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { mixParamID, 1 }, "Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f), 100.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { outputGainParamID, 1 }, "Output",
+        juce::NormalisableRange<float> (-12.0f, 12.0f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    return { params.begin(), params.end() };
 }
 
 // ====================================================================================================== //
@@ -63,8 +107,8 @@ void SoftEsserAudioProcessor::changeProgramName (int /*index*/, const juce::Stri
 void SoftEsserAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
-    bandPassFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, filterQ);
-    bandPassFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, filterQ);
+    bandPassFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), filterQ);
+    bandPassFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), filterQ);
 }
 
 // ====================================================================================================== //
@@ -98,9 +142,12 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     auto totalNumInputChannels = getTotalNumInputChannels();
     auto sampleRate = getSampleRate();
 
-    // Convert percentage parameters to normalized values
-    float wet = mix / 100.0f;
-    float amountNormalized = amount / 100.0f;
+    // Read the current parameter values once per block (lock-free atomic reads)
+    auto threshold  = thresholdParam->load();
+    auto frequency  = frequencyParam->load();
+    auto outputGain = outputGainParam->load();
+    float wet = mixParam->load() / 100.0f;
+    float amountNormalized = amountParam->load() / 100.0f;
 
     // Recompute the detection filters every block so they track live slider changes
     bandPassFilterL.coefficients =
@@ -183,16 +230,23 @@ juce::AudioProcessorEditor* SoftEsserAudioProcessor::createEditor()
 
 // ====================================================================================================== //
 
-// Saves plugin state info (not yet implemented)
-void SoftEsserAudioProcessor::getStateInformation (juce::MemoryBlock& /*destData*/)
+// Saves plugin state info: serialises apvts's current parameter values to XML
+void SoftEsserAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
 }
 
 // ====================================================================================================== //
 
-// Restores plugin state info (not yet implemented)
-void SoftEsserAudioProcessor::setStateInformation (const void* /*data*/, int /*sizeInBytes*/)
+// Restores plugin state info: replaces apvts's state from previously-saved XML
+void SoftEsserAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+
+    if (xmlState != nullptr && xmlState->hasTagName (apvts.state.getType()))
+        apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
 }
 
 // ====================================================================================================== //

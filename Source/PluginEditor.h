@@ -4,22 +4,22 @@
 #pragma once // Header file is included only once during the compilation of the source file
 
 #include "PluginProcessor.h"
+#include "PresetManager.h"
 #include "SoftEsserLookAndFeel.h"
 
 // ====================================================================================================== //
 
-// One rotary control: the slider itself plus the name label shown above it. Grouped together
-// so the two stay in sync (both get the same tooltip, both get positioned as a unit).
+// One rotary control: the slider, the name label shown above it, and the attachment that keeps
+// the slider in sync with its apvts parameter (including updates from host automation).
 struct ParameterControl
 {
     juce::Slider slider;
     juce::Label nameLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
 
 // Main plugin editor class definitions
-class SoftEsserAudioProcessorEditor final
-    : public juce::AudioProcessorEditor,
-      private juce::Slider::Listener
+class SoftEsserAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
 
@@ -34,6 +34,9 @@ public:
 private:
     // Reference to the audio processor whose parameters these sliders control
     SoftEsserAudioProcessor& processorRef;
+
+    // Save/load of named parameter snapshots (see PresetManager.h)
+    PresetManager presetManager;
 
     // Flat, modern knob styling shared by all sliders (see SoftEsserLookAndFeel.h)
     SoftEsserLookAndFeel lookAndFeel;
@@ -50,17 +53,24 @@ private:
     ParameterControl mixControl;
     ParameterControl outputControl;
 
+    // Preset selection/creation
+    juce::ComboBox presetBox;
+    juce::TextButton savePresetButton { "Save As..." };
+    std::unique_ptr<juce::AlertWindow> presetNameWindow; // owns the "name this preset" dialog while it's open
+
     // Background image, loaded from BinaryData in the constructor
     juce::Image backgroundImage;
 
-    // Called when any slider changes value
-    void sliderValueChanged (juce::Slider* slider) override;
+    // Configures one rotary control: attaches it to its apvts parameter, sets decimal places,
+    // unit suffix, hover tooltip, and its name label.
+    void setupControl (ParameterControl& control, const juce::String& parameterID, const juce::String& displayName,
+                        const juce::String& tooltip, int decimalPlaces, const juce::String& suffix);
 
-    // Configures one rotary control: range, default value, decimal places, unit suffix,
-    // hover tooltip, and its name label.
-    void setupControl (ParameterControl& control, const juce::String& name, const juce::String& tooltip,
-                        float minValue, float maxValue, float defaultValue, int decimalPlaces,
-                        const juce::String& suffix);
+    // Repopulates presetBox from PresetManager's current preset list, selecting the active one
+    void refreshPresetBox();
+
+    // Opens a text-entry dialog asking for a preset name, then saves under that name
+    void showSavePresetDialog();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoftEsserAudioProcessorEditor)
 };
