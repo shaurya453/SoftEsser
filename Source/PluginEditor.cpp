@@ -21,6 +21,11 @@ namespace
     constexpr int maxHeight = 700;
 
     constexpr int numControls = 5;
+
+    // Base (unscaled) size of each slider's value text box - see resized(), which rescales
+    // this every time the window size changes.
+    constexpr int textBoxBaseWidth = 70;
+    constexpr int textBoxBaseHeight = 20;
 }
 
 // ====================================================================================================== //
@@ -41,7 +46,7 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     addAndMakeVisible (titleLabel);
 
     setupControl (thresholdControl, SoftEsserAudioProcessor::thresholdParamID, "Threshold",
-                  "Level, in dB, above which gain reduction begins.", 1, " dB");
+                  "Level, in dB, above which gain reduction begins.", 0, " dB");
 
     setupControl (amountControl, SoftEsserAudioProcessor::amountParamID, "Amount",
                   "How strongly the level above the threshold is pulled down.", 0, " %");
@@ -53,7 +58,7 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
                   "Blend between the processed (wet) and original (dry) signal.", 0, " %");
 
     setupControl (outputControl, SoftEsserAudioProcessor::outputGainParamID, "Output",
-                  "Output level trim, in dB, applied after processing.", 1, " dB");
+                  "Output level trim, in dB, applied after processing.", 0, " dB");
 
     presetBox.setTooltip ("Load a saved preset.");
     presetBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::black.withAlpha (0.35f));
@@ -100,7 +105,7 @@ void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, con
 {
     auto& slider = control.slider;
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 20);
+    slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, textBoxBaseWidth, textBoxBaseHeight);
     slider.setNumDecimalPlacesToDisplay (decimalPlaces);
     slider.setTextValueSuffix (suffix);
     slider.setTooltip (tooltip);
@@ -186,8 +191,10 @@ void SoftEsserAudioProcessorEditor::resized()
     auto height = (float) getHeight();
 
     // Aspect ratio is locked (see the constructor), so height/baseHeight alone is an exact
-    // scale factor for both dimensions - used to keep every font size in proportion too.
-    lookAndFeel.setFontScale (height / (float) baseHeight);
+    // scale factor for both dimensions - used to keep every font size and the value text
+    // boxes' size in proportion too.
+    auto scale = height / (float) baseHeight;
+    lookAndFeel.setFontScale (scale);
 
     titleLabel.setBounds (juce::Rectangle<float> (0.0f, height * 0.04f, width, height * 0.18f).toNearestInt());
 
@@ -213,6 +220,12 @@ void SoftEsserAudioProcessorEditor::resized()
         auto sliderX = columnX + (columnWidth - sliderSize) * 0.5f;
         controls[i]->slider.setBounds (
             juce::Rectangle<float> (sliderX, sliderAreaY, sliderSize, sliderSize).toNearestInt());
+
+        // The value text box's own size is a fixed pixel size as far as JUCE is concerned, so
+        // it has to be re-applied here on every resize to keep it in proportion with everything
+        // else (including the rectangular outline drawn around it while it's being edited).
+        controls[i]->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false,
+                                              (int) (textBoxBaseWidth * scale), (int) (textBoxBaseHeight * scale));
     }
 
     // Preset row along the bottom
