@@ -6,6 +6,7 @@
 #include "PluginProcessor.h"
 #include "PresetManager.h"
 #include "SoftEsserLookAndFeel.h"
+#include "GainReductionMeter.h"
 
 // ====================================================================================================== //
 
@@ -19,7 +20,8 @@ struct ParameterControl
 };
 
 // Main plugin editor class definitions
-class SoftEsserAudioProcessorEditor final : public juce::AudioProcessorEditor
+class SoftEsserAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                             private juce::Timer
 {
 public:
 
@@ -50,8 +52,25 @@ private:
     ParameterControl thresholdControl;
     ParameterControl amountControl;
     ParameterControl frequencyControl;
+    ParameterControl qControl;
     ParameterControl mixControl;
     ParameterControl outputControl;
+
+    // Solos the detection band to the output (see PluginProcessor::listenParamID)
+    juce::TextButton listenButton { "Listen" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> listenAttachment;
+
+    // Live readout of the current gain reduction, polled from processorRef by timerCallback()
+    GainReductionMeter gainReductionMeter;
+
+    // Quick A/B compare: two in-memory parameter snapshots, switched between by the buttons
+    // below (see PresetManager::getStateSnapshot()/restoreStateSnapshot() - separate from the
+    // named preset system, and never touches disk).
+    juce::TextButton abButtonA { "A" };
+    juce::TextButton abButtonB { "B" };
+    juce::MemoryBlock stateSnapshotA, stateSnapshotB;
+    bool currentlyOnSlotA = true;
+    void switchAbSlot (bool switchToA);
 
     // Preset selection/creation
     juce::ComboBox presetBox;
@@ -71,6 +90,9 @@ private:
 
     // Opens a text-entry dialog asking for a preset name, then saves under that name
     void showSavePresetDialog();
+
+    // Polls processorRef's current gain reduction and pushes it into gainReductionMeter
+    void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoftEsserAudioProcessorEditor)
 };

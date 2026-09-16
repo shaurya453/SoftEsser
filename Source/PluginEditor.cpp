@@ -20,7 +20,7 @@ namespace
     constexpr int maxWidth = 1400;
     constexpr int maxHeight = 700;
 
-    constexpr int numControls = 5;
+    constexpr int numControls = 6;
 
     // Base (unscaled) size of each slider's value text box - see resized(), which rescales
     // this every time the window size changes.
@@ -54,11 +54,48 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     setupControl (frequencyControl, SoftEsserAudioProcessor::frequencyParamID, "Frequency",
                   "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", 1, " Hz");
 
+    setupControl (qControl, SoftEsserAudioProcessor::qParamID, "Q",
+                  "Width of the detection band. Higher values target a narrower, more surgical range around Frequency.", 1, "");
+
     setupControl (mixControl, SoftEsserAudioProcessor::mixParamID, "Mix",
                   "Blend between the processed (wet) and original (dry) signal.", 1, " %");
 
     setupControl (outputControl, SoftEsserAudioProcessor::outputGainParamID, "Output",
                   "Output level trim, in dB, applied after processing.", 1, " dB");
+
+    listenButton.setTooltip ("Solo the detection band so you can hear exactly what Frequency/Q is picking up.");
+    listenButton.setClickingTogglesState (true);
+    listenButton.setColour (juce::TextButton::buttonColourId, juce::Colours::black.withAlpha (0.35f));
+    listenButton.setColour (juce::TextButton::buttonOnColourId, SoftEsserLookAndFeel::accentColour);
+    listenButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+    listenButton.setColour (juce::TextButton::textColourOnId, juce::Colours::black);
+    addAndMakeVisible (listenButton);
+    listenAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processorRef.apvts, SoftEsserAudioProcessor::listenParamID, listenButton);
+
+    addAndMakeVisible (gainReductionMeter);
+
+    // A/B compare: both slots start out identical to the plugin's current state.
+    stateSnapshotA = presetManager.getStateSnapshot();
+    stateSnapshotB = stateSnapshotA;
+
+    abButtonA.setTooltip ("Recall the A slot. Click while already on A to store the current settings into it.");
+    abButtonB.setTooltip ("Recall the B slot. Click while already on B to store the current settings into it.");
+    abButtonA.setClickingTogglesState (false);
+    abButtonB.setClickingTogglesState (false);
+
+    for (auto* button : { &abButtonA, &abButtonB })
+    {
+        button->setColour (juce::TextButton::buttonColourId, juce::Colours::black.withAlpha (0.35f));
+        button->setColour (juce::TextButton::buttonOnColourId, SoftEsserLookAndFeel::accentColour);
+        button->setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        button->setColour (juce::TextButton::textColourOnId, juce::Colours::black);
+        addAndMakeVisible (*button);
+    }
+
+    abButtonA.setToggleState (true, juce::dontSendNotification);
+    abButtonA.onClick = [this] { switchAbSlot (true); };
+    abButtonB.onClick = [this] { switchAbSlot (false); };
 
     presetBox.setTooltip ("Load a saved preset.");
     presetBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::black.withAlpha (0.35f));
@@ -86,6 +123,8 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
 
     setSize (baseWidth, baseHeight);
+
+    startTimerHz (30);
 }
 
 // ====================================================================================================== //
@@ -170,6 +209,35 @@ void SoftEsserAudioProcessorEditor::showSavePresetDialog()
 
 // ====================================================================================================== //
 
+// Switches the active A/B slot. If the requested slot is already active, this instead re-stores
+// the current settings into it (so you can update A or B without leaving it) - otherwise the
+// current settings are stored into the slot being left, and the requested slot is recalled.
+void SoftEsserAudioProcessorEditor::switchAbSlot (bool switchToA)
+{
+    if (switchToA == currentlyOnSlotA)
+    {
+        (switchToA ? stateSnapshotA : stateSnapshotB) = presetManager.getStateSnapshot();
+        return;
+    }
+
+    (currentlyOnSlotA ? stateSnapshotA : stateSnapshotB) = presetManager.getStateSnapshot();
+    presetManager.restoreStateSnapshot (switchToA ? stateSnapshotA : stateSnapshotB);
+    currentlyOnSlotA = switchToA;
+
+    abButtonA.setToggleState (currentlyOnSlotA, juce::dontSendNotification);
+    abButtonB.setToggleState (! currentlyOnSlotA, juce::dontSendNotification);
+}
+
+// ====================================================================================================== //
+
+// Polls the processor's current gain reduction a few times a second and pushes it into the meter
+void SoftEsserAudioProcessorEditor::timerCallback()
+{
+    gainReductionMeter.setLevel (processorRef.currentGainReductionDb.load (std::memory_order_relaxed));
+}
+
+// ====================================================================================================== //
+
 // Drawing the UI background
 void SoftEsserAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -196,16 +264,21 @@ void SoftEsserAudioProcessorEditor::resized()
     auto scale = height / (float) baseHeight;
     lookAndFeel.setFontScale (scale);
 
-    titleLabel.setBounds (juce::Rectangle<float> (0.0f, height * 0.04f, width, height * 0.18f).toNearestInt());
+    titleLabel.setBounds (juce::Rectangle<float> (0.0f, height * 0.02f, width, height * 0.14f).toNearestInt());
+
+    auto meterWidth  = width * 0.5f;
+    auto meterHeight = height * 0.035f;
+    gainReductionMeter.setBounds (
+        juce::Rectangle<float> ((width - meterWidth) * 0.5f, height * 0.17f, meterWidth, meterHeight).toNearestInt());
 
     ParameterControl* controls[numControls] = {
-        &thresholdControl, &amountControl, &frequencyControl, &mixControl, &outputControl
+        &thresholdControl, &amountControl, &frequencyControl, &qControl, &mixControl, &outputControl
     };
 
-    auto labelAreaY      = height * 0.24f;
-    auto labelAreaHeight = height * 0.10f;
+    auto labelAreaY      = height * 0.23f;
+    auto labelAreaHeight = height * 0.08f;
     auto sliderAreaY     = labelAreaY + labelAreaHeight;
-    auto sliderAreaHeight = height * 0.44f;
+    auto sliderAreaHeight = height * 0.36f;
 
     auto columnWidth = width / (float) numControls;
     auto sliderSize  = juce::jmin (columnWidth * 0.85f, sliderAreaHeight);
@@ -227,6 +300,25 @@ void SoftEsserAudioProcessorEditor::resized()
         controls[i]->slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false,
                                               (int) (textBoxBaseWidth * scale), (int) (textBoxBaseHeight * scale));
     }
+
+    // Listen toggle + A/B compare row
+    auto controlRowY      = height * 0.71f;
+    auto controlRowHeight = height * 0.08f;
+    auto controlRowWidth  = width * 0.7f;
+    auto controlRowX      = (width - controlRowWidth) * 0.5f;
+
+    auto listenWidth = controlRowWidth * 0.45f;
+    auto abGroupWidth = controlRowWidth * 0.45f;
+    auto abGap = controlRowWidth * 0.03f;
+    auto abButtonWidth = (abGroupWidth - abGap) * 0.5f;
+    auto abGroupX = controlRowX + controlRowWidth - abGroupWidth;
+
+    listenButton.setBounds (
+        juce::Rectangle<float> (controlRowX, controlRowY, listenWidth, controlRowHeight).toNearestInt());
+    abButtonA.setBounds (
+        juce::Rectangle<float> (abGroupX, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
+    abButtonB.setBounds (
+        juce::Rectangle<float> (abGroupX + abButtonWidth + abGap, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
 
     // Preset row along the bottom
     auto presetRowY      = height * 0.88f;

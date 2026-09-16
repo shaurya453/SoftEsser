@@ -26,6 +26,11 @@ public:
     // All preset names currently on disk, alphabetically sorted.
     juce::StringArray getAllPresets() const;
 
+    // In-memory equivalents of savePreset()/loadPreset(), used by the editor's A/B compare
+    // buttons - no file I/O, and doesn't touch currentPresetName.
+    juce::MemoryBlock getStateSnapshot() const;
+    void restoreStateSnapshot (const juce::MemoryBlock& snapshot);
+
     // The name last passed to savePreset()/loadPreset(), or empty if none yet (e.g. the current
     // state has been edited since and no longer matches any saved preset).
     const juce::String& getCurrentPresetName() const noexcept { return currentPresetName; }

@@ -26,8 +26,10 @@ SoftEsserAudioProcessor::SoftEsserAudioProcessor()
     thresholdParam  = apvts.getRawParameterValue (thresholdParamID);
     amountParam     = apvts.getRawParameterValue (amountParamID);
     frequencyParam  = apvts.getRawParameterValue (frequencyParamID);
+    qParam          = apvts.getRawParameterValue (qParamID);
     mixParam        = apvts.getRawParameterValue (mixParamID);
     outputGainParam = apvts.getRawParameterValue (outputGainParamID);
+    listenParam     = apvts.getRawParameterValue (listenParamID);
 }
 
 // ====================================================================================================== //
@@ -61,6 +63,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::cre
         juce::NormalisableRange<float> (4000.0f, 10000.0f), 7000.0f,
         juce::AudioParameterFloatAttributes().withLabel ("Hz")));
 
+    // Q factor of the detection band-pass filter: lower values listen across a wider band
+    // (catches more general harshness), higher values narrow in on a specific sibilant range.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { qParamID, 1 }, "Q",
+        juce::NormalisableRange<float> (0.3f, 6.0f), 2.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("")));
+
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { mixParamID, 1 }, "Mix",
         juce::NormalisableRange<float> (0.0f, 100.0f), 100.0f,
@@ -70,6 +79,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::cre
         juce::ParameterID { outputGainParamID, 1 }, "Output",
         juce::NormalisableRange<float> (-12.0f, 12.0f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    // Solos the detection band to the output, so you can hear exactly what Frequency/Q is
+    // picking up while tuning them. Off by default (0 = normal processed output).
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { listenParamID, 1 }, "Listen", false));
 
     return { params.begin(), params.end() };
 }
@@ -107,8 +121,8 @@ void SoftEsserAudioProcessor::changeProgramName (int /*index*/, const juce::Stri
 void SoftEsserAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
-    bandPassFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), filterQ);
-    bandPassFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), filterQ);
+    bandPassFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), qParam->load());
+    bandPassFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), qParam->load());
 }
 
 // ====================================================================================================== //
@@ -145,16 +159,22 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Read the current parameter values once per block (lock-free atomic reads)
     auto threshold  = thresholdParam->load();
     auto frequency  = frequencyParam->load();
+    auto q          = qParam->load();
     auto outputGain = outputGainParam->load();
+    bool listen     = listenParam->load() > 0.5f;
     float wet = mixParam->load() / 100.0f;
     float amountNormalized = amountParam->load() / 100.0f;
 
     // Recompute the detection filters every block so they track live slider changes
     bandPassFilterL.coefficients =
-        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, filterQ);
+        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, q);
 
     bandPassFilterR.coefficients =
-        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, filterQ);
+        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, q);
+
+    // Largest reduction applied anywhere in this block, across both channels - drives the
+    // editor's gain-reduction meter.
+    float peakReductionDb = 0.0f;
 
     for (int channel = 0; channel < totalNumInputChannels; ++channel)
     {
@@ -192,6 +212,16 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 gainReductionDb = -excess * amountNormalized;
             }
 
+            peakReductionDb = juce::jmax (peakReductionDb, -gainReductionDb);
+
+            // Listen mode: send the detection band itself to the output, unprocessed, so you
+            // can hear exactly what Frequency/Q is picking up.
+            if (listen)
+            {
+                channelData[sample] = filtered;
+                continue;
+            }
+
             // Convert dB to linear gain for processing
             float gain =
                 juce::Decibels::decibelsToGain (gainReductionDb);
@@ -210,6 +240,8 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             channelData[sample] = output;
         }
     }
+
+    currentGainReductionDb.store (peakReductionDb, std::memory_order_relaxed);
 }
 
 // ====================================================================================================== //

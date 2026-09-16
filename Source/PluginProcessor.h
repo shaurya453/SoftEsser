@@ -64,12 +64,19 @@ public:
     static constexpr const char* thresholdParamID  = "threshold";
     static constexpr const char* amountParamID     = "amount";
     static constexpr const char* frequencyParamID  = "frequency";
+    static constexpr const char* qParamID          = "filterQ";
     static constexpr const char* mixParamID        = "mix";
     static constexpr const char* outputGainParamID = "outputGain";
+    static constexpr const char* listenParamID     = "listen";
 
-    // All five user parameters. Backs host automation, project save/load (getStateInformation),
+    // All user parameters. Backs host automation, project save/load (getStateInformation),
     // and presets (PresetManager saves/loads snapshots of this same state).
     juce::AudioProcessorValueTreeState apvts;
+
+    // Peak gain reduction, in dB, applied during the most recently processed block. Written on
+    // the audio thread in processBlock(), read on the message thread by the editor's meter -
+    // an atomic is enough to make that safe since it's just a single scalar readout.
+    std::atomic<float> currentGainReductionDb { 0.0f };
 
 private:
 
@@ -79,11 +86,14 @@ private:
     std::atomic<float>* thresholdParam  = nullptr;
     std::atomic<float>* amountParam     = nullptr;
     std::atomic<float>* frequencyParam  = nullptr;
+    std::atomic<float>* qParam          = nullptr;
     std::atomic<float>* mixParam        = nullptr;
     std::atomic<float>* outputGainParam = nullptr;
+    std::atomic<float>* listenParam     = nullptr;
 
-    // Band-pass filters used only to detect the level of the target frequency band (sidechain
-    // style); the gain reduction they produce is applied to the full, unfiltered signal.
+    // Band-pass filters used to detect the level of the target frequency band (sidechain
+    // style); the gain reduction they produce is applied to the full, unfiltered signal (unless
+    // Listen mode is on, in which case the filtered band itself is sent to the output instead).
     juce::dsp::IIR::Filter<float> bandPassFilterL;
     juce::dsp::IIR::Filter<float> bandPassFilterR;
 
@@ -91,9 +101,6 @@ private:
     // channels don't bleed into each other's gain reduction.
     float envelopeL = 0.0f;
     float envelopeR = 0.0f;
-
-    // Q factor of the detection band-pass filter
-    static constexpr float filterQ = 2.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoftEsserAudioProcessor)
 };
