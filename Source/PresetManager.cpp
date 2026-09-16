@@ -62,15 +62,18 @@ PresetManager::PresetManager (juce::AudioProcessorValueTreeState& stateToManage)
     if (! directory.isDirectory())
         directory.createDirectory();
 
-    // On first run there are no presets on disk yet - save the plugin's current (default)
-    // state plus a handful of starting-point presets, so the list is never empty.
-    if (getAllPresets().isEmpty())
-    {
+    // Each factory preset (Default included) is seeded individually if its own file is missing,
+    // rather than only when the whole folder is empty - an install that already had "Default"
+    // from before this feature existed would otherwise never get the newer factory presets.
+    if (! directory.getChildFile (defaultPresetName + presetFileExtension).existsAsFile())
         savePreset (defaultPresetName);
 
-        for (const auto& preset : factoryPresets)
-            writeFactoryPresetFile (apvts, preset,
-                                     getPresetDirectory().getChildFile (juce::String (preset.name) + presetFileExtension));
+    for (const auto& preset : factoryPresets)
+    {
+        auto file = directory.getChildFile (juce::String (preset.name) + presetFileExtension);
+
+        if (! file.existsAsFile())
+            writeFactoryPresetFile (apvts, preset, file);
     }
 }
 
