@@ -44,6 +44,21 @@ SoftEsserAudioProcessor::~SoftEsserAudioProcessor()
 // Declares the five user parameters: ID, display name, range, and default value. This is the
 // single source of truth for parameter ranges/defaults - the editor's sliders read them back
 // via their attachments rather than duplicating these numbers.
+namespace
+{
+    // AudioParameterFloat's *default* text formatting derives its decimal-place count from the
+    // NormalisableRange's interval, which for a continuous (interval == 0) range can come out as
+    // up to 7 decimal places (e.g. "7000.0000000") - and critically, this is what the editor's
+    // sliders actually display, since SliderAttachment wires the slider's text display straight
+    // to the parameter's getText() rather than to Slider::setNumDecimalPlacesToDisplay(). Setting
+    // this explicitly on every parameter is the only way to control what's shown.
+    juce::AudioParameterFloatAttributes withOneDecimalPlace (const juce::String& label)
+    {
+        return juce::AudioParameterFloatAttributes().withLabel (label)
+            .withStringFromValueFunction ([] (float value, int) { return juce::String (value, 1); });
+    }
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
@@ -51,34 +66,34 @@ juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::cre
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { thresholdParamID, 1 }, "Threshold",
         juce::NormalisableRange<float> (-60.0f, 0.0f), -20.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+        withOneDecimalPlace ("dB")));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { amountParamID, 1 }, "Amount",
         juce::NormalisableRange<float> (0.0f, 100.0f), 50.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("%")));
+        withOneDecimalPlace ("%")));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { frequencyParamID, 1 }, "Frequency",
         juce::NormalisableRange<float> (4000.0f, 10000.0f), 7000.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+        withOneDecimalPlace ("Hz")));
 
     // Q factor of the detection band-pass filter: lower values listen across a wider band
     // (catches more general harshness), higher values narrow in on a specific sibilant range.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { qParamID, 1 }, "Q",
         juce::NormalisableRange<float> (0.3f, 6.0f), 2.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("")));
+        withOneDecimalPlace ("")));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { mixParamID, 1 }, "Mix",
         juce::NormalisableRange<float> (0.0f, 100.0f), 100.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("%")));
+        withOneDecimalPlace ("%")));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { outputGainParamID, 1 }, "Output",
         juce::NormalisableRange<float> (-12.0f, 12.0f), 0.0f,
-        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+        withOneDecimalPlace ("dB")));
 
     // Solos the detection band to the output, so you can hear exactly what Frequency/Q is
     // picking up while tuning them. Off by default (0 = normal processed output).

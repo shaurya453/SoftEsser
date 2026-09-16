@@ -55,6 +55,13 @@ public:
         return juce::Font (15.0f * fontScale).withExtraKerningFactor (0.02f);
     }
 
+    // Scales the "Listen"/"A"/"B"/"Save As..." button text along with everything else, capped to
+    // the button's own height so it can never overflow a small button at large scale factors.
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return juce::Font (juce::jmin (15.0f * fontScale, (float) buttonHeight * 0.6f));
+    }
+
     // Draws a flat arc-style rotary knob: a dim background track, a bright accent arc showing
     // the current value, and a short pointer line - no bevels or gradients.
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,

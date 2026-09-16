@@ -46,22 +46,22 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     addAndMakeVisible (titleLabel);
 
     setupControl (thresholdControl, SoftEsserAudioProcessor::thresholdParamID, "Threshold",
-                  "Level, in dB, above which gain reduction begins.", 1, " dB");
+                  "Level, in dB, above which gain reduction begins.", " dB");
 
     setupControl (amountControl, SoftEsserAudioProcessor::amountParamID, "Amount",
-                  "How strongly the level above the threshold is pulled down.", 1, " %");
+                  "How strongly the level above the threshold is pulled down.", " %");
 
     setupControl (frequencyControl, SoftEsserAudioProcessor::frequencyParamID, "Frequency",
-                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", 1, " Hz");
+                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", " Hz");
 
     setupControl (qControl, SoftEsserAudioProcessor::qParamID, "Q",
-                  "Width of the detection band. Higher values target a narrower, more surgical range around Frequency.", 1, "");
+                  "Width of the detection band. Higher values target a narrower, more surgical range around Frequency.", "");
 
     setupControl (mixControl, SoftEsserAudioProcessor::mixParamID, "Mix",
-                  "Blend between the processed (wet) and original (dry) signal.", 1, " %");
+                  "Blend between the processed (wet) and original (dry) signal.", " %");
 
     setupControl (outputControl, SoftEsserAudioProcessor::outputGainParamID, "Output",
-                  "Output level trim, in dB, applied after processing.", 1, " dB");
+                  "Output level trim, in dB, applied after processing.", " dB");
 
     listenButton.setTooltip ("Solo the detection band so you can hear exactly what Frequency/Q is picking up.");
     listenButton.setClickingTogglesState (true);
@@ -140,12 +140,11 @@ SoftEsserAudioProcessorEditor::~SoftEsserAudioProcessorEditor()
 // Configures one rotary control (slider + its name label) and attaches it to its apvts parameter
 void SoftEsserAudioProcessorEditor::setupControl (ParameterControl& control, const juce::String& parameterID,
                                                    const juce::String& displayName, const juce::String& tooltip,
-                                                   int decimalPlaces, const juce::String& suffix)
+                                                   const juce::String& suffix)
 {
     auto& slider = control.slider;
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, textBoxBaseWidth, textBoxBaseHeight);
-    slider.setNumDecimalPlacesToDisplay (decimalPlaces);
     slider.setTextValueSuffix (suffix);
     slider.setTooltip (tooltip);
     addAndMakeVisible (slider);
@@ -307,18 +306,18 @@ void SoftEsserAudioProcessorEditor::resized()
     auto controlRowWidth  = width * 0.7f;
     auto controlRowX      = (width - controlRowWidth) * 0.5f;
 
-    auto listenWidth = controlRowWidth * 0.45f;
     auto abGroupWidth = controlRowWidth * 0.45f;
+    auto listenWidth = controlRowWidth * 0.45f;
     auto abGap = controlRowWidth * 0.03f;
     auto abButtonWidth = (abGroupWidth - abGap) * 0.5f;
-    auto abGroupX = controlRowX + controlRowWidth - abGroupWidth;
+    auto listenX = controlRowX + controlRowWidth - listenWidth;
 
-    listenButton.setBounds (
-        juce::Rectangle<float> (controlRowX, controlRowY, listenWidth, controlRowHeight).toNearestInt());
     abButtonA.setBounds (
-        juce::Rectangle<float> (abGroupX, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
+        juce::Rectangle<float> (controlRowX, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
     abButtonB.setBounds (
-        juce::Rectangle<float> (abGroupX + abButtonWidth + abGap, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
+        juce::Rectangle<float> (controlRowX + abButtonWidth + abGap, controlRowY, abButtonWidth, controlRowHeight).toNearestInt());
+    listenButton.setBounds (
+        juce::Rectangle<float> (listenX, controlRowY, listenWidth, controlRowHeight).toNearestInt());
 
     // Preset row along the bottom
     auto presetRowY      = height * 0.88f;

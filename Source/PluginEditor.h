@@ -80,10 +80,12 @@ private:
     // Background image, loaded from BinaryData in the constructor
     juce::Image backgroundImage;
 
-    // Configures one rotary control: attaches it to its apvts parameter, sets decimal places,
-    // unit suffix, hover tooltip, and its name label.
+    // Configures one rotary control: attaches it to its apvts parameter, sets its unit suffix,
+    // hover tooltip, and its name label. Decimal-place formatting lives on the parameter itself
+    // (see PluginProcessor.cpp's withOneDecimalPlace()), not here - the slider's own displayed
+    // text comes straight from the parameter's getText() once it's attached.
     void setupControl (ParameterControl& control, const juce::String& parameterID, const juce::String& displayName,
-                        const juce::String& tooltip, int decimalPlaces, const juce::String& suffix);
+                        const juce::String& tooltip, const juce::String& suffix);
 
     // Repopulates presetBox from PresetManager's current preset list, selecting the active one
     void refreshPresetBox();
