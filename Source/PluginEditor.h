@@ -53,10 +53,12 @@ private:
     ParameterControl amountControl;
     ParameterControl frequencyControl;
     ParameterControl qControl;
+    ParameterControl attackControl;
+    ParameterControl releaseControl;
     ParameterControl mixControl;
     ParameterControl outputControl;
 
-    // Solos the detection band to the output (see PluginProcessor::listenParamID)
+    // Solos the high (de-essed) band to the output (see PluginProcessor::listenParamID)
     juce::TextButton listenButton { "Listen" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> listenAttachment;
 

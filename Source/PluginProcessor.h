@@ -9,9 +9,10 @@
 
 // ====================================================================================================== //
 
-// SoftEsser is a frequency-selective de-esser: it band-pass filters the signal around a target
-// frequency to detect sibilance, then pulls the level down once that band's envelope crosses
-// a threshold. See SoftEsserAudioProcessor::processBlock() for the full signal chain.
+// SoftEsser is a split-band de-esser: the signal is split at Frequency into an untouched low
+// band and a high band, and only the high band's level is pulled down once its envelope crosses
+// a threshold, before the two bands are summed back together. See
+// SoftEsserAudioProcessor::processBlock() for the full signal chain.
 class SoftEsserAudioProcessor final : public juce::AudioProcessor
 {
 public:
@@ -65,6 +66,8 @@ public:
     static constexpr const char* amountParamID     = "amount";
     static constexpr const char* frequencyParamID  = "frequency";
     static constexpr const char* qParamID          = "filterQ";
+    static constexpr const char* attackParamID     = "attack";
+    static constexpr const char* releaseParamID    = "release";
     static constexpr const char* mixParamID        = "mix";
     static constexpr const char* outputGainParamID = "outputGain";
     static constexpr const char* listenParamID     = "listen";
@@ -87,18 +90,21 @@ private:
     std::atomic<float>* amountParam     = nullptr;
     std::atomic<float>* frequencyParam  = nullptr;
     std::atomic<float>* qParam          = nullptr;
+    std::atomic<float>* attackParam     = nullptr;
+    std::atomic<float>* releaseParam    = nullptr;
     std::atomic<float>* mixParam        = nullptr;
     std::atomic<float>* outputGainParam = nullptr;
     std::atomic<float>* listenParam     = nullptr;
 
-    // Band-pass filters used to detect the level of the target frequency band (sidechain
-    // style); the gain reduction they produce is applied to the full, unfiltered signal (unless
-    // Listen mode is on, in which case the filtered band itself is sent to the output instead).
-    juce::dsp::IIR::Filter<float> bandPassFilterL;
-    juce::dsp::IIR::Filter<float> bandPassFilterR;
+    // Low-pass crossover filter. The high band isn't filtered directly - it's obtained as
+    // (input - lowBandOutput), so the two bands are guaranteed to sum back to the original
+    // signal exactly (no phase-mismatch gap or bump at the crossover point, regardless of Q).
+    juce::dsp::IIR::Filter<float> crossoverFilterL;
+    juce::dsp::IIR::Filter<float> crossoverFilterR;
 
     // One-pole envelope follower state, tracked separately per channel so the left and right
-    // channels don't bleed into each other's gain reduction.
+    // channels don't bleed into each other's gain reduction. Its ballistics (Attack/Release)
+    // are recomputed from the current sample rate every block - see processBlock().
     float envelopeL = 0.0f;
     float envelopeR = 0.0f;
 

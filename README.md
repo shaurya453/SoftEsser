@@ -2,10 +2,10 @@
 
 [![Build](https://github.com/shaurya453/SoftEsser/actions/workflows/build.yml/badge.svg)](https://github.com/shaurya453/SoftEsser/actions/workflows/build.yml)
 
-A frequency-selective de-esser plugin built with [JUCE](https://juce.com/). It band-pass filters
-the signal around a target frequency, tracks that band's level, and pulls the overall signal down
-once it crosses a threshold - useful for taming sibilance or other narrow-band peaks without
-affecting the rest of the signal.
+A split-band de-esser plugin built with [JUCE](https://juce.com/). It splits the signal at a
+target frequency into an untouched low band and a high band, tracks the high band's level, and
+pulls only that band down once it crosses a threshold - useful for taming sibilance or other
+narrow-band peaks without ducking the rest of the signal.
 
 Built on [JUCE-Plugin-Boilerplate-by-Archie](https://github.com/archietiger/JUCE-Plugin-Biolerplate-by-Archie).
 
@@ -15,8 +15,10 @@ Built on [JUCE-Plugin-Boilerplate-by-Archie](https://github.com/archietiger/JUCE
 |---------------|----------------|---------------------------------------------------------------------------|
 | **Threshold** | -60 to 0 dB    | Level above which gain reduction begins.                                  |
 | **Amount**    | 0 to 100 %     | How strongly the level above the threshold is pulled down.                |
-| **Frequency** | 4 kHz to 10 kHz| Centre frequency of the band monitored for excess level (e.g. sibilance). |
-| **Q**         | 0.3 to 6.0     | Width of the detection band - higher is narrower/more surgical.           |
+| **Frequency** | 4 kHz to 10 kHz| Split point between the untouched low band and the de-essed high band.    |
+| **Q**         | 0.3 to 6.0     | Resonance of the crossover split - higher is a sharper, more surgical split. |
+| **Attack**    | 0.1 to 50 ms   | How quickly the de-esser responds once the high band crosses the threshold. |
+| **Release**   | 5 to 300 ms    | How quickly the de-esser lets go once the high band falls back below the threshold. |
 | **Mix**       | 0 to 100 %     | Blend between the processed (wet) and original (dry) signal.              |
 | **Output**    | -12 to +12 dB  | Output level trim, applied after processing.                              |
 
@@ -25,10 +27,10 @@ keeps its proportions (knobs, labels, and fonts all scale together).
 
 ## Other controls
 
-- **Listen** - solos the detection band to the output, so you can hear exactly what Frequency/Q
-  is picking up while you tune them.
-- **Gain reduction meter** - the bar under the title shows how much reduction is being applied
-  in real time.
+- **Listen** - solos the high band to the output, so you can hear exactly what's being de-essed
+  while you tune Frequency/Q.
+- **Gain reduction meter** - the vertical meter next to the knobs shows how much reduction is
+  being applied in real time, with a dB tick scale and a live numeric readout.
 - **A / B** - two in-memory snapshots of the current settings for quick before/after comparison.
   Click the inactive slot to recall it (storing the current settings into the slot you're
   leaving first); click the active slot again to re-store the current settings into it.
@@ -73,7 +75,7 @@ downloadable artifacts on each run.
 ```text
 SoftEsser/
 ├── Source/
-│   ├── PluginProcessor.h/.cpp     # DSP: filtering, envelope follower, gain reduction, mix
+│   ├── PluginProcessor.h/.cpp     # DSP: band split, envelope follower, gain reduction, mix
 │   ├── PluginEditor.h/.cpp        # GUI: layout, resizing, tooltips, A/B compare
 │   ├── PresetManager.h/.cpp       # Save/load/delete presets, factory presets, A/B snapshots
 │   ├── SoftEsserLookAndFeel.h     # Custom knob styling and font scaling

@@ -16,13 +16,13 @@ namespace
     struct FactoryPreset
     {
         const char* name;
-        float threshold, amount, frequency, q, mix, outputGain;
+        float threshold, amount, frequency, q, attack, release, mix, outputGain;
     };
 
     const FactoryPreset factoryPresets[] = {
-        { "Vocal - Light",      -18.0f, 35.0f, 6500.0f, 2.0f, 100.0f, 0.0f },
-        { "Vocal - Aggressive", -24.0f, 70.0f, 7000.0f, 3.0f, 100.0f, 0.0f },
-        { "Broadcast",          -20.0f, 50.0f, 6000.0f, 1.5f, 100.0f, 0.0f },
+        { "Vocal - Light",      -18.0f, 35.0f, 6500.0f, 0.7f, 3.0f, 80.0f, 100.0f, 0.0f },
+        { "Vocal - Aggressive", -24.0f, 70.0f, 7000.0f, 1.0f, 1.0f, 40.0f, 100.0f, 0.0f },
+        { "Broadcast",          -20.0f, 50.0f, 6000.0f, 0.7f, 2.0f, 60.0f, 100.0f, 0.0f },
     };
 
     // Writes a factory preset straight to XML, bypassing apvts entirely - the presets are seeded
@@ -45,6 +45,8 @@ namespace
         addParam (SoftEsserAudioProcessor::amountParamID,     preset.amount);
         addParam (SoftEsserAudioProcessor::frequencyParamID,  preset.frequency);
         addParam (SoftEsserAudioProcessor::qParamID,          preset.q);
+        addParam (SoftEsserAudioProcessor::attackParamID,     preset.attack);
+        addParam (SoftEsserAudioProcessor::releaseParamID,    preset.release);
         addParam (SoftEsserAudioProcessor::mixParamID,        preset.mix);
         addParam (SoftEsserAudioProcessor::outputGainParamID, preset.outputGain);
         addParam (SoftEsserAudioProcessor::listenParamID,     0.0f);

@@ -1,13 +1,11 @@
 // SoftEsser - Built by Shaurya 13-05-2026
-// Core DSP: band-pass detection, envelope following, threshold-based gain reduction, wet/dry mix.
+// Core DSP: low/high band split, envelope following, threshold-based gain reduction, wet/dry mix.
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 // ====================================================================================================== //
-
-// One-pole smoothing coefficient for the envelope follower (closer to 1 = slower/smoother).
-static constexpr float envelopeSmoothing = 0.99f;
 
 // Small offset added before converting the envelope to dB, so a silent signal (envelope == 0)
 // doesn't produce -infinity dB.
@@ -27,6 +25,8 @@ SoftEsserAudioProcessor::SoftEsserAudioProcessor()
     amountParam     = apvts.getRawParameterValue (amountParamID);
     frequencyParam  = apvts.getRawParameterValue (frequencyParamID);
     qParam          = apvts.getRawParameterValue (qParamID);
+    attackParam     = apvts.getRawParameterValue (attackParamID);
+    releaseParam    = apvts.getRawParameterValue (releaseParamID);
     mixParam        = apvts.getRawParameterValue (mixParamID);
     outputGainParam = apvts.getRawParameterValue (outputGainParamID);
     listenParam     = apvts.getRawParameterValue (listenParamID);
@@ -41,7 +41,7 @@ SoftEsserAudioProcessor::~SoftEsserAudioProcessor()
 
 // ====================================================================================================== //
 
-// Declares the five user parameters: ID, display name, range, and default value. This is the
+// Declares the user parameters: ID, display name, range, and default value. This is the
 // single source of truth for parameter ranges/defaults - the editor's sliders read them back
 // via their attachments rather than duplicating these numbers.
 namespace
@@ -78,12 +78,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::cre
         juce::NormalisableRange<float> (4000.0f, 10000.0f), 7000.0f,
         withOneDecimalPlace ("Hz")));
 
-    // Q factor of the detection band-pass filter: lower values listen across a wider band
-    // (catches more general harshness), higher values narrow in on a specific sibilant range.
+    // Resonance of the low-pass crossover filter that splits the signal at Frequency. 0.707
+    // (Butterworth) is a flat, gentle split; higher values sharpen the corner for a more
+    // surgical separation between the two bands.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { qParamID, 1 }, "Q",
-        juce::NormalisableRange<float> (0.3f, 6.0f), 2.0f,
+        juce::NormalisableRange<float> (0.3f, 6.0f), 0.707f,
         withOneDecimalPlace ("")));
+
+    // Envelope follower ballistics for the high band's detector. Fast attack catches sibilant
+    // transients quickly; release controls how long the reduction holds before letting go
+    // (too fast can pump/chatter, too slow can dull consonants after the "s").
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { attackParamID, 1 }, "Attack",
+        juce::NormalisableRange<float> (0.1f, 50.0f, 0.0f, 0.4f), 2.0f,
+        withOneDecimalPlace ("ms")));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { releaseParamID, 1 }, "Release",
+        juce::NormalisableRange<float> (5.0f, 300.0f, 0.0f, 0.4f), 60.0f,
+        withOneDecimalPlace ("ms")));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { mixParamID, 1 }, "Mix",
@@ -95,8 +109,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SoftEsserAudioProcessor::cre
         juce::NormalisableRange<float> (-12.0f, 12.0f), 0.0f,
         withOneDecimalPlace ("dB")));
 
-    // Solos the detection band to the output, so you can hear exactly what Frequency/Q is
-    // picking up while tuning them. Off by default (0 = normal processed output).
+    // Solos the high band to the output, so you can hear exactly what's being de-essed while
+    // tuning Frequency/Q. Off by default (0 = normal processed output).
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { listenParamID, 1 }, "Listen", false));
 
@@ -130,14 +144,17 @@ void SoftEsserAudioProcessor::changeProgramName (int /*index*/, const juce::Stri
 
 // ====================================================================================================== //
 
-// Called before audio playback begins, initializes the detection filters using the current
-// sample rate. processBlock() also recomputes these every block so they keep tracking the
-// frequency slider while it's being moved.
+// Called before audio playback begins, initializes the crossover filter using the current
+// sample rate and resets the envelope followers. processBlock() also recomputes the filter every
+// block so it keeps tracking the frequency slider while it's being moved.
 void SoftEsserAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
-    bandPassFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), qParam->load());
-    bandPassFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequencyParam->load(), qParam->load());
+    crossoverFilterL.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, frequencyParam->load(), qParam->load());
+    crossoverFilterR.coefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, frequencyParam->load(), qParam->load());
+
+    envelopeL = 0.0f;
+    envelopeR = 0.0f;
 }
 
 // ====================================================================================================== //
@@ -159,7 +176,7 @@ bool SoftEsserAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 // ====================================================================================================== //
 
 // MAIN AUDIO PROCESSING FUNCTION
-//     > Band-pass filtering, envelope following, threshold comparison, gain reduction, wet/dry mixing, output gain adjustment
+//     > Band split, envelope following, threshold comparison, gain reduction, wet/dry mixing, output gain adjustment
 
 void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                              juce::MidiBuffer& midiMessages)
@@ -175,17 +192,25 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     auto threshold  = thresholdParam->load();
     auto frequency  = frequencyParam->load();
     auto q          = qParam->load();
+    auto attackMs   = attackParam->load();
+    auto releaseMs  = releaseParam->load();
     auto outputGain = outputGainParam->load();
     bool listen     = listenParam->load() > 0.5f;
     float wet = mixParam->load() / 100.0f;
     float amountNormalized = amountParam->load() / 100.0f;
 
-    // Recompute the detection filters every block so they track live slider changes
-    bandPassFilterL.coefficients =
-        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, q);
+    // Recompute the crossover filter every block so it tracks live slider changes
+    crossoverFilterL.coefficients =
+        juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, frequency, q);
 
-    bandPassFilterR.coefficients =
-        juce::dsp::IIR::Coefficients<float>::makeBandPass (sampleRate, frequency, q);
+    crossoverFilterR.coefficients =
+        juce::dsp::IIR::Coefficients<float>::makeLowPass (sampleRate, frequency, q);
+
+    // One-pole attack/release coefficients for the envelope follower, derived from the current
+    // sample rate so Attack/Release keep the same real-world timing regardless of project
+    // sample rate (a fixed coefficient would run faster at higher sample rates).
+    auto attackCoeff  = std::exp (-1.0f / (float) (sampleRate * (attackMs  * 0.001)));
+    auto releaseCoeff = std::exp (-1.0f / (float) (sampleRate * (releaseMs * 0.001)));
 
     // Largest reduction applied anywhere in this block, across both channels - drives the
     // editor's gain-reduction meter.
@@ -195,21 +220,26 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     {
         auto* channelData = buffer.getWritePointer (channel);
 
-        auto& filter = (channel == 0) ? bandPassFilterL : bandPassFilterR;
+        auto& crossover = (channel == 0) ? crossoverFilterL : crossoverFilterR;
         auto& envelope = (channel == 0) ? envelopeL : envelopeR;
 
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = channelData[sample];
 
-            // Filter application
-            float filtered = filter.processSample (input);
+            // Split the signal at Frequency. highBand is obtained by subtraction rather than a
+            // second filter, so lowBand + highBand always sums back to the original input
+            // exactly - the split can never introduce a gap or bump at the crossover point.
+            float lowBand = crossover.processSample (input);
+            float highBand = input - lowBand;
 
-            // Get absolute amplitude values (without polarity)
-            float detector = std::abs (filtered);
+            // Get absolute amplitude of the band being de-essed (without polarity)
+            float detector = std::abs (highBand);
 
-            // Envelope follower, smoothens the signal
-            envelope = envelopeSmoothing * envelope + (1.0f - envelopeSmoothing) * detector;
+            // Envelope follower: rises at the Attack rate, falls at the Release rate
+            envelope = (detector > envelope)
+                ? attackCoeff * envelope + (1.0f - attackCoeff) * detector
+                : releaseCoeff * envelope + (1.0f - releaseCoeff) * detector;
 
             float envelopeDb =
                 juce::Decibels::gainToDecibels (envelope + envelopeNoiseFloor);
@@ -229,20 +259,20 @@ void SoftEsserAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
             peakReductionDb = juce::jmax (peakReductionDb, -gainReductionDb);
 
-            // Listen mode: send the detection band itself to the output, unprocessed, so you
-            // can hear exactly what Frequency/Q is picking up.
+            // Listen mode: send the high band itself to the output, unprocessed, so you can
+            // hear exactly what's being de-essed.
             if (listen)
             {
-                channelData[sample] = filtered;
+                channelData[sample] = highBand;
                 continue;
             }
 
-            // Convert dB to linear gain for processing
+            // Convert dB to linear gain and apply it to the high band only - the low band
+            // passes through completely untouched.
             float gain =
                 juce::Decibels::decibelsToGain (gainReductionDb);
 
-            // Apply processing to the original (unfiltered) signal
-            float processed = input * gain;
+            float processed = lowBand + (highBand * gain);
 
             // Wet/dry mix
             float output =
