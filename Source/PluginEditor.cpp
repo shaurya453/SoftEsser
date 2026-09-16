@@ -46,19 +46,19 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     addAndMakeVisible (titleLabel);
 
     setupControl (thresholdControl, SoftEsserAudioProcessor::thresholdParamID, "Threshold",
-                  "Level, in dB, above which gain reduction begins.", 0, " dB");
+                  "Level, in dB, above which gain reduction begins.", 1, " dB");
 
     setupControl (amountControl, SoftEsserAudioProcessor::amountParamID, "Amount",
-                  "How strongly the level above the threshold is pulled down.", 0, " %");
+                  "How strongly the level above the threshold is pulled down.", 1, " %");
 
     setupControl (frequencyControl, SoftEsserAudioProcessor::frequencyParamID, "Frequency",
-                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", 0, " Hz");
+                  "Centre frequency of the band that is monitored for excess level (e.g. sibilance).", 1, " Hz");
 
     setupControl (mixControl, SoftEsserAudioProcessor::mixParamID, "Mix",
-                  "Blend between the processed (wet) and original (dry) signal.", 0, " %");
+                  "Blend between the processed (wet) and original (dry) signal.", 1, " %");
 
     setupControl (outputControl, SoftEsserAudioProcessor::outputGainParamID, "Output",
-                  "Output level trim, in dB, applied after processing.", 0, " dB");
+                  "Output level trim, in dB, applied after processing.", 1, " dB");
 
     presetBox.setTooltip ("Load a saved preset.");
     presetBox.setColour (juce::ComboBox::backgroundColourId, juce::Colours::black.withAlpha (0.35f));
