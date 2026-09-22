@@ -19,6 +19,25 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
+      - name: Download pluginval
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip" -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+
+      - name: Validate VST3 with pluginval
+        run: |
+          ./pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --timeout-ms 60000 `
+            --output-dir pluginval-logs `
+            --validate "build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload pluginval logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pluginval-logs
+          path: pluginval-logs
+
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:

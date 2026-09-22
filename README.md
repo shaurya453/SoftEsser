@@ -68,7 +68,10 @@ build/SoftEsser_artefacts/Release/Standalone/SoftEsser.exe
 
 Every push to `main` also builds automatically via GitHub Actions
 ([workflow](.github/workflows/build.yml)), and the built VST3/Standalone binaries are attached as
-downloadable artifacts on each run.
+downloadable artifacts on each run. Every build is also validated with
+[pluginval](https://github.com/Tracktion/pluginval) - see
+[`docs/pluginval-report.md`](docs/pluginval-report.md) for the latest results and how to run it
+locally.
 
 ## Project Structure
 
