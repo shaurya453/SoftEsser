@@ -24,3 +24,6 @@ compile_commands.json
 
 # Logs
 *.log
+
+# Inno Setup installer output
+installer/Output/

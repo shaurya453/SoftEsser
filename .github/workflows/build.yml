@@ -49,3 +49,18 @@ jobs:
         with:
           name: SoftEsser-Standalone
           path: build/SoftEsser_artefacts/Release/Standalone/SoftEsser.exe
+
+      - name: Build installer with Inno Setup
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "installer\SoftEsser.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftEsser-Installer
+          path: installer/Output/*.exe

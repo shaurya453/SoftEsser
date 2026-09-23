@@ -73,6 +73,23 @@ downloadable artifacts on each run. Every build is also validated with
 [`docs/pluginval-report.md`](docs/pluginval-report.md) for the latest results and how to run it
 locally.
 
+### Building the installer
+
+The VST3 and Standalone build above are packaged into a single Windows installer with
+[Inno Setup](https://jrsoftware.org/isinfo.php) - the installer builder [recommended by JUCE's own
+docs](https://juce.com/tutorials/tutorial_step_by_step_windows/) - via
+[`installer/SoftEsser.iss`](installer/SoftEsser.iss). After building Release above:
+
+```bash
+iscc installer\SoftEsser.iss
+```
+
+This writes `installer/Output/SoftEsser-Setup-<version>.exe`, which installs the VST3 into the
+standard per-machine `Common Files\VST3` location and the Standalone app into
+`Program Files\TheMeloMix\SoftEsser`, with Start Menu shortcuts and an uninstaller. Requires admin
+rights to run (it writes to Program Files/Common Files). CI builds this too on every push and
+attaches it as the `SoftEsser-Installer` artifact.
+
 ## Project Structure
 
 ```text
