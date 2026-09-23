@@ -8,7 +8,7 @@ set(CURRENT_VERSION "0.0.1")
 set(PRODUCT_NAME "SoftEsser")
 set(COMPANY_NAME "TheMeloMix")
 set(BUNDLE_ID "com.themelomix.SoftEsser")
-set(FORMATS Standalone VST3)
+set(FORMATS VST3)
 
 # JUCE
 add_subdirectory(modules/JUCE)

@@ -2,8 +2,9 @@
 ; the installer builder JUCE's own docs recommend for packaging Windows plugins:
 ; https://juce.com/tutorials/tutorial_step_by_step_windows/
 ;
-; Packages the Release VST3 and Standalone builds produced by CMake (see README.md's Building
-; section) into a single signed-ready .exe installer. Run from the repo root, after building:
+; Packages the Release VST3 build produced by CMake (see README.md's Building section) into a
+; single .exe installer that drops it into the standard per-machine VST3 folder. Run from the
+; repo root, after building:
 ;
 ;   cmake -B build -A x64
 ;   cmake --build build --config Release
@@ -29,10 +30,13 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 VersionInfoVersion={#AppVersion}
-DefaultDirName={autopf}\{#AppPublisher}\{#AppName}
+; No app folder to pick - the only thing this installer does is drop the VST3 into the standard
+; system location below.
 DisableDirPage=yes
-DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
+DisableReadyPage=yes
+DisableFinishedPage=no
+CreateAppDir=no
 OutputDir=Output
 OutputBaseFilename={#AppName}-Setup-{#AppVersion}
 Compression=lzma2
@@ -42,30 +46,12 @@ WizardStyle=modern
 ; always writes into the 64-bit Common Files\VST3 folder.
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Required because the VST3/Program Files locations below need admin rights to write to.
+; Required because Common Files\VST3 needs admin rights to write to.
 PrivilegesRequired=admin
-UninstallDisplayIcon={app}\{#AppName}.exe
-
-[Types]
-Name: "full"; Description: "Full installation"
-Name: "custom"; Description: "Custom installation"; Flags: iscustom
-
-[Components]
-Name: "vst3"; Description: "VST3 plug-in"; Types: full custom; Flags: fixed
-Name: "standalone"; Description: "Standalone application"; Types: full custom
 
 [Files]
 ; Standard per-machine VST3 location that every VST3 host scans by default.
-Source: "{#BuildDir}\VST3\{#AppName}.vst3\*"; DestDir: "{commoncf64}\VST3\{#AppName}.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: vst3
-Source: "{#BuildDir}\Standalone\{#AppName}.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: standalone
+Source: "{#BuildDir}\VST3\{#AppName}.vst3\*"; DestDir: "{commoncf64}\VST3\{#AppName}.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-[Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Components: standalone
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppName}.exe"; Tasks: desktopicon; Components: standalone
-
-[Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Components: standalone; Flags: unchecked
-
-[Run]
-Filename: "{app}\{#AppName}.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent; Components: standalone
+[UninstallDelete]
+Type: filesandordirs; Name: "{commoncf64}\VST3\{#AppName}.vst3"

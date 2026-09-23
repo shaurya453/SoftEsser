@@ -37,6 +37,14 @@ namespace
 SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p), presetManager (p.apvts)
 {
+    // Captured now, before setResizeLimits() below. setResizeLimits() clamps the editor's
+    // current (still default-constructed, zero-sized) bounds up to the minimum size, which
+    // fires resized() early - and resized() writes the editor's *current* size back into
+    // processorRef.lastEditorWidth/Height. Left until after that call, this restore would read
+    // back the minimum size it had just clobbered instead of the size actually being restored.
+    auto restoredWidth  = processorRef.lastEditorWidth;
+    auto restoredHeight = processorRef.lastEditorHeight;
+
     setLookAndFeel (&lookAndFeel);
 
     // Load background image from binary data
@@ -133,8 +141,9 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
 
     // Reopen at whatever size the window was last left at (persisted on processorRef - see
     // PluginProcessor::getStateInformation()/setStateInformation() - so this also survives a
-    // host project reload), rather than always resetting back to the design size.
-    setSize (processorRef.lastEditorWidth, processorRef.lastEditorHeight);
+    // host project reload), rather than always resetting back to the design size. Uses the
+    // values captured at the top of the constructor - see the comment there.
+    setSize (restoredWidth, restoredHeight);
 
     startTimerHz (30);
 }

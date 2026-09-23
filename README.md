@@ -40,7 +40,7 @@ keeps its proportions (knobs, labels, and fonts all scale together).
 
 ## Formats
 
-Builds as **VST3** and a **Standalone** application, for Windows.
+Builds as a **VST3** plugin only, for Windows.
 
 ## Building
 
@@ -59,23 +59,22 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-Built binaries land under:
+Built binary lands under:
 
 ```text
 build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3
-build/SoftEsser_artefacts/Release/Standalone/SoftEsser.exe
 ```
 
 Every push to `main` also builds automatically via GitHub Actions
-([workflow](.github/workflows/build.yml)), and the built VST3/Standalone binaries are attached as
-downloadable artifacts on each run. Every build is also validated with
+([workflow](.github/workflows/build.yml)), and the built VST3 is attached as a downloadable
+artifact on each run. Every build is also validated with
 [pluginval](https://github.com/Tracktion/pluginval) - see
 [`docs/pluginval-report.md`](docs/pluginval-report.md) for the latest results and how to run it
 locally.
 
 ### Building the installer
 
-The VST3 and Standalone build above are packaged into a single Windows installer with
+The VST3 build above is packaged into a Windows installer with
 [Inno Setup](https://jrsoftware.org/isinfo.php) - the installer builder [recommended by JUCE's own
 docs](https://juce.com/tutorials/tutorial_step_by_step_windows/) - via
 [`installer/SoftEsser.iss`](installer/SoftEsser.iss). After building Release above:
@@ -85,10 +84,9 @@ iscc installer\SoftEsser.iss
 ```
 
 This writes `installer/Output/SoftEsser-Setup-<version>.exe`, which installs the VST3 into the
-standard per-machine `Common Files\VST3` location and the Standalone app into
-`Program Files\TheMeloMix\SoftEsser`, with Start Menu shortcuts and an uninstaller. Requires admin
-rights to run (it writes to Program Files/Common Files). CI builds this too on every push and
-attaches it as the `SoftEsser-Installer` artifact.
+standard per-machine `Common Files\VST3` location, with an uninstaller. Requires admin rights to
+run (it writes to Common Files). CI builds this too on every push and attaches it as the
+`SoftEsser-Installer` artifact.
 
 ## Project Structure
 
