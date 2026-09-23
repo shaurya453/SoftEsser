@@ -312,18 +312,28 @@ void SoftEsserAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    xml->setAttribute ("editorWidth", lastEditorWidth);
+    xml->setAttribute ("editorHeight", lastEditorHeight);
     copyXmlToBinary (*xml, destData);
 }
 
 // ====================================================================================================== //
 
-// Restores plugin state info: replaces apvts's state from previously-saved XML
+// Restores plugin state info: replaces apvts's state from previously-saved XML, plus the last
+// editor window size stashed alongside it by getStateInformation() above.
 void SoftEsserAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
 
     if (xmlState != nullptr && xmlState->hasTagName (apvts.state.getType()))
+    {
         apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+
+        lastEditorWidth  = juce::jlimit (defaultEditorWidth, maxEditorWidth,
+                                          xmlState->getIntAttribute ("editorWidth", defaultEditorWidth));
+        lastEditorHeight = juce::jlimit (defaultEditorHeight, maxEditorHeight,
+                                          xmlState->getIntAttribute ("editorHeight", defaultEditorHeight));
+    }
 }
 
 // ====================================================================================================== //

@@ -41,25 +41,30 @@ public:
 
     void setFontScale (float newScale) noexcept { fontScale = newScale; }
 
+    // Shared modern, sleek typeface for every piece of text in the editor - a plain system UI
+    // font rather than a heavy display face, kept consistent everywhere so the title doesn't
+    // clash with the rest of the interface.
+    static inline const juce::String uiTypefaceName = "Segoe UI";
+
     // All label text in the editor - the title, the parameter names, and the slider's own
     // value/edit box - is sized from here, so a single scale factor keeps everything in
     // proportion as the window is resized.
     juce::Font getLabelFont (juce::Label& label) override
     {
         if (label.getName() == titleLabelName)
-            return juce::Font (26.0f * fontScale, juce::Font::bold);
+            return juce::Font (uiTypefaceName, 19.0f * fontScale, juce::Font::plain).withExtraKerningFactor (0.09f);
 
         if (label.getName() == paramNameLabelName)
-            return juce::Font (13.0f * fontScale);
+            return juce::Font (uiTypefaceName, 13.0f * fontScale, juce::Font::plain);
 
-        return juce::Font (15.0f * fontScale).withExtraKerningFactor (0.02f);
+        return juce::Font (uiTypefaceName, 15.0f * fontScale, juce::Font::plain).withExtraKerningFactor (0.02f);
     }
 
     // Scales the "Listen"/"A"/"B"/"Save As..." button text along with everything else, capped to
     // the button's own height so it can never overflow a small button at large scale factors.
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
     {
-        return juce::Font (juce::jmin (15.0f * fontScale, (float) buttonHeight * 0.6f));
+        return juce::Font (uiTypefaceName, juce::jmin (15.0f * fontScale, (float) buttonHeight * 0.6f), juce::Font::plain);
     }
 
     // Draws a flat arc-style rotary knob: a dim background track, a bright accent arc showing

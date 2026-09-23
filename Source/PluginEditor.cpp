@@ -12,13 +12,14 @@ namespace
 {
     // Design size of the background art (also the minimum window size). The resize constraint
     // below locks the window to this same aspect ratio, so the background always scales
-    // uniformly instead of stretching out of shape.
-    constexpr int baseWidth = 500;
-    constexpr int baseHeight = 250;
+    // uniformly instead of stretching out of shape. Shared with SoftEsserAudioProcessor so the
+    // last-used window size it remembers is always within these same bounds.
+    constexpr int baseWidth  = SoftEsserAudioProcessor::defaultEditorWidth;
+    constexpr int baseHeight = SoftEsserAudioProcessor::defaultEditorHeight;
 
     // Largest the window can be dragged to (same aspect ratio as baseWidth/baseHeight)
-    constexpr int maxWidth = 1400;
-    constexpr int maxHeight = 700;
+    constexpr int maxWidth  = SoftEsserAudioProcessor::maxEditorWidth;
+    constexpr int maxHeight = SoftEsserAudioProcessor::maxEditorHeight;
 
     constexpr int numControls = 8;
     constexpr int numControlColumns = 4;
@@ -130,7 +131,10 @@ SoftEsserAudioProcessorEditor::SoftEsserAudioProcessorEditor (SoftEsserAudioProc
     setResizeLimits (baseWidth, baseHeight, maxWidth, maxHeight);
     getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
 
-    setSize (baseWidth, baseHeight);
+    // Reopen at whatever size the window was last left at (persisted on processorRef - see
+    // PluginProcessor::getStateInformation()/setStateInformation() - so this also survives a
+    // host project reload), rather than always resetting back to the design size.
+    setSize (processorRef.lastEditorWidth, processorRef.lastEditorHeight);
 
     startTimerHz (30);
 }
@@ -271,6 +275,12 @@ void SoftEsserAudioProcessorEditor::resized()
     auto scale = height / (float) baseHeight;
     lookAndFeel.setFontScale (scale);
     gainReductionMeter.setFontScale (scale);
+
+    // Remember this size so the next time the editor is opened - whether that's reopening the
+    // window in the same session or reloading the host project - it comes back at the size it
+    // was left at instead of resetting to the design size.
+    processorRef.lastEditorWidth  = getWidth();
+    processorRef.lastEditorHeight = getHeight();
 
     titleLabel.setBounds (juce::Rectangle<float> (0.0f, 0.0f, width, height * 0.10f).toNearestInt());
 

@@ -81,6 +81,17 @@ public:
     // an atomic is enough to make that safe since it's just a single scalar readout.
     std::atomic<float> currentGainReductionDb { 0.0f };
 
+    // Editor window size, remembered across the editor being closed/reopened (message-thread
+    // only, so plain ints are fine) and persisted into the saved state below so it survives a
+    // host project reload too. Defaults/limits are shared with PluginEditor.cpp so the editor
+    // never has to duplicate these numbers.
+    static constexpr int defaultEditorWidth  = 500;
+    static constexpr int defaultEditorHeight = 250;
+    static constexpr int maxEditorWidth  = 1400;
+    static constexpr int maxEditorHeight = 700;
+    int lastEditorWidth  = defaultEditorWidth;
+    int lastEditorHeight = defaultEditorHeight;
+
 private:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
