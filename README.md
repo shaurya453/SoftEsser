@@ -40,22 +40,34 @@ keeps its proportions (knobs, labels, and fonts all scale together).
 
 ## Formats
 
-Builds as a **VST3** plugin only, for Windows.
+Builds as a **VST3** plugin, for Windows and macOS.
 
 ## Building
 
 ### Requirements
 
 - CMake 3.23.1+
-- A C++17 compiler (Visual Studio 2022 Build Tools or newer, on Windows)
+- A C++17 compiler (Visual Studio 2022 Build Tools or newer, on Windows; Xcode command line
+  tools, on macOS)
 - Git
 
 ### Steps
+
+Windows:
 
 ```bash
 git clone https://github.com/shaurya453/SoftEsser.git
 cd SoftEsser
 cmake -B build -A x64
+cmake --build build --config Release
+```
+
+macOS:
+
+```bash
+git clone https://github.com/shaurya453/SoftEsser.git
+cd SoftEsser
+cmake -B build -G Xcode
 cmake --build build --config Release
 ```
 
@@ -66,15 +78,15 @@ build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3
 ```
 
 Every push to `main` also builds automatically via GitHub Actions
-([workflow](.github/workflows/build.yml)), and the built VST3 is attached as a downloadable
-artifact on each run. Every build is also validated with
+([workflow](.github/workflows/build.yml)) on both Windows and macOS, and the built VST3 for each
+platform is attached as a downloadable artifact on each run. Every build is also validated with
 [pluginval](https://github.com/Tracktion/pluginval) - see
 [`docs/pluginval-report.md`](docs/pluginval-report.md) for the latest results and how to run it
 locally.
 
 ### Building the installer
 
-The VST3 build above is packaged into a Windows installer with
+**Windows** - the VST3 build above is packaged into an installer with
 [Inno Setup](https://jrsoftware.org/isinfo.php) - the installer builder [recommended by JUCE's own
 docs](https://juce.com/tutorials/tutorial_step_by_step_windows/) - via
 [`installer/SoftEsser.iss`](installer/SoftEsser.iss). After building Release above:
@@ -88,6 +100,27 @@ standard per-machine `Common Files\VST3` location, with an uninstaller. Requires
 run (it writes to Common Files). CI builds this too on every push and attaches it as the
 `SoftEsser-Installer` artifact.
 
+**macOS** - the VST3 build above is packaged into a `.pkg` installer via
+[`installer/macos/build-pkg.sh`](installer/macos/build-pkg.sh), using Apple's own `pkgbuild` /
+`productbuild` tools. After building Release above:
+
+```bash
+./installer/macos/build-pkg.sh
+```
+
+This writes `installer/Output/SoftEsser-Setup-<version>.pkg`, which installs the VST3 into the
+standard per-machine `/Library/Audio/Plug-Ins/VST3` location. Requires admin rights to run. CI
+builds this too on every push and attaches it as the `SoftEsser-Installer-macOS` artifact.
+
+This `.pkg` is **not code-signed or notarized** (that requires a paid Apple Developer account and
+signing certificates, which this repo doesn't have configured). macOS Gatekeeper will refuse to
+open it with a plain double-click; to install it anyway, either right-click the `.pkg` and choose
+**Open**, or run:
+
+```bash
+xattr -dr com.apple.quarantine SoftEsser-Setup-<version>.pkg
+```
+
 ## Project Structure
 
 ```text
@@ -100,7 +133,10 @@ SoftEsser/
 │   ├── GainReductionMeter.h       # Real-time gain reduction meter component
 │   └── assets/bg.png              # Background art
 ├── modules/JUCE/                  # Trimmed JUCE framework (only the modules this plugin needs)
-├── .github/workflows/build.yml    # CI build
+├── installer/
+│   ├── SoftEsser.iss              # Windows installer (Inno Setup)
+│   └── macos/build-pkg.sh         # macOS installer (.pkg)
+├── .github/workflows/build.yml    # CI build (Windows + macOS)
 └── CMakeLists.txt
 ```
 

@@ -58,3 +58,51 @@ jobs:
         with:
           name: SoftEsser-Installer
           path: installer/Output/*.exe
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -G Xcode
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Download pluginval
+        run: |
+          curl -L -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip"
+          unzip -q pluginval.zip -d pluginval
+          chmod +x pluginval/pluginval.app/Contents/MacOS/pluginval
+
+      - name: Validate VST3 with pluginval
+        run: |
+          pluginval/pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --skip-gui-tests --timeout-ms 60000 \
+            --output-dir pluginval-logs \
+            --validate "build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3"
+
+      - name: Upload pluginval logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pluginval-logs-macos
+          path: pluginval-logs
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftEsser-VST3-macOS
+          path: build/SoftEsser_artefacts/Release/VST3/SoftEsser.vst3
+
+      - name: Build installer
+        run: |
+          chmod +x installer/macos/build-pkg.sh
+          ./installer/macos/build-pkg.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoftEsser-Installer-macOS
+          path: installer/Output/*.pkg
